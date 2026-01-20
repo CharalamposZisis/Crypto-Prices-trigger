@@ -5,7 +5,8 @@ from collections import deque, defaultdict
 from datetime import datetime, timezone
 import requests
 import websocket
-from lamda_architecture.publish_to_queue import init_rabbitmq, publish_to_rabbitmq
+from publish_to_queue import init_rabbitmq, publish_to_rabbitmq, save_alert_to_minio
+from minio import Minio
 
 # =========================
 # CONFIG
@@ -33,14 +34,24 @@ def utc_now_iso():
 def ms_to_iso(ms):
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
 
-# def fire_webhook(payload):
-#     if not WEBHOOK_URL:
-#         return
-#     try:
-#         requests.post(WEBHOOK_URL, json=payload, timeout=WEBHOOK_TIMEOUT_SEC)
-#     except Exception as e:
-#         # don't crash on webhook issues
-#         print("[WARN] webhook failed:", repr(e))
+# =========================
+# MINIO CONFIG
+# =========================
+MINIO_ENDPOINT = "localhost:9000"  
+MINIO_ACCESS_KEY = "minio"
+MINIO_SECRET_KEY = "minio123"
+MINIO_BUCKET = "alerts"
+
+minio_client = Minio(
+    MINIO_ENDPOINT,
+    access_key=MINIO_ACCESS_KEY,
+    secret_key=MINIO_SECRET_KEY,
+    secure=False  # use False if using HTTP
+)
+
+# Ensure bucket exists
+if not minio_client.bucket_exists(MINIO_BUCKET):
+    minio_client.make_bucket(MINIO_BUCKET)
 
 def make_alert(symbol, alert_type, message, price=None, pct_move=None, volume=None, vol_avg=None):
     return  {
@@ -84,6 +95,7 @@ def check_rules(symbol, o, c, v):
             alerts.append(make_alert(symbol, "VOLUME_SPIKE",f"Volume {v:.2f} > {VOLUME_SPIKE_MULT:.1f}x avg {vol_avg:.2f}",price=c, volume=v, vol_avg=vol_avg))
     for alert in alerts:
         publish_to_rabbitmq(alert)
+        save_alert_to_minio(alert,minio_client,MINIO_BUCKET)
         print(f"[ALERT] {symbol} {alert['event_type']}: {alert['message']}")
 
 # =========================
