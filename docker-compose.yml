@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # RabbitMQ UI
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # MinIO UI
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    volumes:
+      - minio_data:/data
+
+  nodered:
+    image: nodered/node-red
+    container_name: nodered
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    depends_on:
+      - rabbitmq
+      - minio
+
+volumes:
+  rabbitmq_data:
+  minio_data:
+  nodered_data:
